@@ -1,0 +1,25 @@
+# .NET build and test output
+**/bin/
+**/obj/
+**/publish/
+**/publish-*/
+**/TestResults/
+*.trx
+*.coverage
+*.coveragexml
+
+# Local IDE settings
+.vs/
+.idea/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Generated design-tool cache
+.impeccable/hook.cache.json
+
+# OS metadata
+.DS_Store
+Thumbs.db
+Desktop.ini

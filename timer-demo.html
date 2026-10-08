@@ -1,0 +1,367 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Glass timer · UI demo</title>
+  <!--
+    THESIS: A compact countdown with progress on its perimeter, not a miniature dashboard.
+    OWN-WORLD: Frosted graphite glass, white tabular digits, a pale blue remaining-time border.
+    STORY: Hover to operate; lock for a quiet, click-through timer. Unlock from the tray.
+    FIRST VIEWPORT: One 132 by 58 pixel timer over a desktop scene; demo settings and tray below.
+    FORM: User-selected compact strip with border progress. Native desktop behaviors are simulated.
+  -->
+  <style>
+    :root { color-scheme: dark; font-family: "Segoe UI", system-ui, sans-serif; color: #f3f6fb;
+      --glass: #15243255; --solid: #202d3c; --ink: #f3f6fb; --accent: #b6dcff; --track: #ffffff26; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100svh; background: #202e37; }
+    button, input, select { font: inherit; }
+    button { color: inherit; cursor: pointer; }
+    button:focus-visible, input:focus-visible, select:focus-visible, .timer:focus-visible {
+      outline: 2px solid #b6dcff; outline-offset: 4px;
+    }
+    .desktop {
+      min-height: 100svh; overflow: hidden; position: relative; isolation: isolate;
+      background: linear-gradient(to right, #192b39 0 50%, #f0f3f6 50% 100%);
+    }
+    .landscape { display: none; }
+    .landscape::before, .landscape::after {
+      content: ""; position: absolute; width: 140%; height: 80%; left: -20%;
+      border-radius: 50% 50% 0 0;
+    }
+    .landscape::before { top: 48%; background: #253c4a; transform: rotate(-17deg); }
+    .landscape::after { top: 68%; background: #192b39; transform: rotate(12deg); }
+    header { padding: 38px 44px; width: fit-content; max-width: 100%; background: #192b39; border-radius: 0 0 10px 0; }
+    h1 { margin: 0 0 8px; font-size: 23px; font-weight: 500; letter-spacing: -.02em; }
+    header p { margin: 0; color: #e0e9ef; font-size: 14px; line-height: 1.6; }
+    .stage { position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%); }
+    .stage.locked, .stage.locked * { pointer-events: none; }
+    .timer {
+      position: relative; width: 132px; height: 58px; padding: 0 16px; display: flex; align-items: center; justify-content: center;
+      border: 0; border-radius: 14px;
+      color: var(--ink); background: transparent;
+      box-shadow: none;
+      transition: background .2s ease-out;
+      cursor: grab; user-select: none; touch-action: none;
+    }
+    .stage:not(.locked):hover .timer {
+      background: color-mix(in srgb, var(--solid) 80%, transparent);
+    }
+    .timer.dragging { cursor: grabbing; }
+    .timer.locked { cursor: default; }
+    .digits { width: 100%; text-align: center; line-height: 1; font-family: "Consolas", monospace; font-size: 26px; font-weight: 500; font-variant-numeric: tabular-nums; letter-spacing: .01em; }
+    .timer .perimeter { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; stroke-width: 2; }
+    .track { stroke: var(--track); }
+    .fill { stroke: var(--accent); stroke-dasharray: 100; stroke-dashoffset: 25.2; stroke-linecap: butt; }
+    .stage:not(.locked):hover .timer { color: var(--ink); }
+    .stage:not(.locked):hover .track { stroke: var(--track); }
+    .stage:not(.locked):hover .fill { stroke: var(--accent); }
+    .toolbar {
+      position: absolute; top: 66px; left: 50%; transform: translateX(-50%);
+      display: flex; gap: 4px; padding: 5px; border: 1px solid #ffffff26; border-radius: 11px;
+      color: var(--ink); background: color-mix(in srgb, var(--solid) 80%, transparent);
+      visibility: hidden; opacity: 0; transition: opacity .15s ease-out, visibility .15s;
+    }
+    .stage::after { content: ""; position: absolute; top: 58px; left: 0; width: 100%; height: 10px; }
+    .stage:not(.locked):is(:hover, :focus-within) .toolbar { visibility: visible; opacity: 1; }
+    .toolbar button { display: grid; place-items: center; width: 38px; height: 34px; border: 0; background: transparent; border-radius: 7px; }
+    .toolbar button:hover { background: color-mix(in srgb, var(--ink) 14%, transparent); }
+    .toolbar button[aria-pressed="true"] { color: var(--accent); background: color-mix(in srgb, var(--accent) 18%, transparent); }
+    .toolbar button[aria-pressed="true"]:hover { background: color-mix(in srgb, var(--accent) 28%, transparent); }
+    svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+    .hint { position: absolute; top: 120px; width: 360px; left: 50%; transform: translateX(-50%); text-align: center; color: #f3f6fb; background: #192b39; padding: 8px; border-radius: 7px; font-size: 13px; line-height: 1.6; pointer-events: none; }
+    .settings {
+      position: absolute; bottom: 100px; left: 44px; right: 44px;
+      display: flex; justify-content: space-between; align-items: end; gap: 32px;
+    }
+    .settings > div:first-child { background: #192b39; padding: 16px; border-radius: 10px; }
+    .settings .state { color: #243342; }
+    .settings .state strong { color: #243342; }
+    .settings h2 { margin: 0 0 12px; font-size: 15px; font-weight: 500; }
+    .settings p { max-width: 400px; margin: 12px 0 0; color: #d1deea; font-size: 12px; line-height: 1.65; }
+    .duration { display: flex; align-items: center; gap: 10px; font-size: 13px; }
+    input { width: 64px; padding: 9px; color: #f3f6fb; border: 1px solid #ffffff40; border-radius: 7px; background: #142434; }
+    .font-picker { display: flex; align-items: center; gap: 10px; margin-top: 16px; font-size: 13px; }
+    .font-picker select { width: 210px; padding: 9px; color: #f3f6fb; border: 1px solid #ffffff40; border-radius: 7px; background: #142434; }
+    .settings .font-note { margin-top: 6px; }
+    .themes { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 10px; }
+    .themes button { border: 1px solid #ffffff40; border-radius: 7px; background: #142434; padding: 8px 10px; font-size: 12px; }
+    .themes button[aria-pressed="true"] { border-color: var(--accent); background: #304556; }
+    .swatch { display: inline-block; width: 9px; height: 9px; margin-right: 7px; border-radius: 50%; background: var(--swatch); }
+    .settings .theme-description { min-height: 20px; margin-top: 8px; }
+    .apply { background: #d9eaff; color: #172b3e; padding: 10px 15px; border: 0; border-radius: 7px; font-size: 13px; font-weight: 600; }
+    .apply:hover { background: #ecf5ff; }
+    #error { color: #ffcac6; min-height: 20px; }
+    .state { text-align: right; font-size: 13px; color: #e0e9ef; }
+    .state strong { display: block; margin-bottom: 7px; color: white; font-weight: 500; }
+    .taskbar {
+      position: absolute; bottom: 0; height: 54px; width: 100%; display: flex; justify-content: flex-end; align-items: center;
+      padding: 0 20px; gap: 16px; border-top: 1px solid #ffffff12; background: #111e2bba;
+    }
+    .tray-note { color: #d1deea; font-size: 12px; }
+    #tray { display: grid; place-items: center; width: 34px; height: 34px; border: 0; background: transparent; border-radius: 6px; }
+    #tray:hover, #tray[aria-expanded="true"] { background: #ffffff16; }
+    .clock { font-size: 12px; color: #d1deea; padding-left: 8px; }
+    .menu {
+      position: absolute; bottom: 62px; right: 74px; width: 206px; margin: 0; padding: 6px;
+      background: #233140; border: 1px solid #ffffff2e; border-radius: 10px;
+    }
+    .menu[hidden] { display: none; }
+    .menu button { display: block; width: 100%; border: 0; border-radius: 5px; padding: 10px 12px; background: transparent; text-align: left; font-size: 13px; }
+    .menu button:hover { background: #ffffff14; }
+    .menu hr { border: 0; border-top: 1px solid #ffffff20; margin: 5px 8px; }
+    @media (max-width: 600px) {
+      header { padding: 26px 24px; }
+      .stage { top: 26%; }
+      .settings { left: 24px; right: 24px; bottom: 85px; display: block; }
+      .settings .state { text-align: left; margin-top: 20px; background: #192b39; padding: 10px; border-radius: 7px; color: #e0e9ef; }
+      .settings .state strong { color: #fff; }
+      .hint { width: min(340px, calc(100vw - 40px)); }
+      .tray-note { font-size: 11px; }
+    }
+    @media (max-height: 620px) { .stage { top: 32%; } .settings { bottom: 70px; } .settings p { max-width: 300px; } }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; } }
+  </style>
+</head>
+<body>
+  <main class="desktop">
+    <div class="landscape" aria-hidden="true"></div>
+    <header>
+      <h1>A little time. A little space.</h1>
+      <p>Dark / light contrast test. Drag the timer across the split.</p>
+    </header>
+    <section class="stage" aria-label="Countdown widget">
+      <div class="timer" id="timer" tabindex="0" aria-label="Countdown timer. Drag to move when unlocked.">
+        <span class="digits" id="digits">18:42</span>
+        <svg class="perimeter" viewBox="0 0 132 58" id="progress" role="progressbar" aria-label="Time remaining" aria-valuemin="0" aria-valuemax="1500" aria-valuenow="1122">
+          <path class="track" d="M66 1H118A13 13 0 0 1 131 14V44A13 13 0 0 1 118 57H14A13 13 0 0 1 1 44V14A13 13 0 0 1 14 1Z"/>
+          <path class="fill" id="fill" pathLength="100" d="M66 1H118A13 13 0 0 1 131 14V44A13 13 0 0 1 118 57H14A13 13 0 0 1 1 44V14A13 13 0 0 1 14 1Z"/>
+        </svg>
+      </div>
+      <div class="toolbar" aria-label="Timer controls">
+        <button id="pause" title="Pause" aria-label="Pause"><svg viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></svg></button>
+        <button id="reset" title="Reset" aria-label="Reset"><svg viewBox="0 0 24 24"><path d="M4 10a8 8 0 1 1 2 8M4 4v6h6"/></svg></button>
+        <button id="pin" aria-label="Pin always on top" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="M8 3h8M9 3v7l-3 4h12l-3-4V3M12 14v7"/></svg></button>
+        <button id="lock" title="Lock widget" aria-label="Lock widget"><svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></button>
+      </div>
+      <p class="hint" id="hint">Hover for controls. Drag to find your spot.</p>
+    </section>
+    <section class="settings" aria-label="Demo settings">
+      <div>
+        <h2>Try your own countdown</h2>
+        <form class="duration" id="duration-form">
+          <label for="minutes">Minutes</label>
+          <input type="number" id="minutes" min="1" max="180" step="1" value="25" required>
+          <button class="apply" type="submit">Start timer</button>
+        </form>
+        <div class="font-picker">
+          <label for="font">Timer font</label>
+          <select id="font" aria-describedby="font-note">
+            <option value="'Segoe UI', system-ui, sans-serif">Segoe UI · clean</option>
+            <option value="'Bahnschrift', 'Segoe UI', sans-serif">Bahnschrift · precise</option>
+            <option value="'Consolas', monospace" selected>Consolas · monospace</option>
+            <option value="'Cascadia Code', 'Consolas', monospace">Cascadia Code · code</option>
+            <option value="'Arial', sans-serif">Arial · classic</option>
+            <option value="'Verdana', sans-serif">Verdana · wide</option>
+            <option value="'Trebuchet MS', sans-serif">Trebuchet MS · soft</option>
+            <option value="'Georgia', serif">Georgia · serif</option>
+            <option value="'Cambria', serif">Cambria · bookish</option>
+            <option value="'Courier New', monospace">Courier New · typewriter</option>
+          </select>
+        </div>
+        <p class="font-note" id="font-note">Live preview on the timer only. Uses installed fonts; unavailable fonts fall back.</p>
+        <div class="themes" role="group" aria-label="Timer color theme">
+          <button type="button" data-theme="slate" aria-pressed="true"><span class="swatch" style="--swatch:#b6dcff"></span>Slate</button>
+          <button type="button" data-theme="mint" aria-pressed="false"><span class="swatch" style="--swatch:#a5e7cb"></span>Mint</button>
+          <button type="button" data-theme="amber" aria-pressed="false"><span class="swatch" style="--swatch:#f3ce8a"></span>Amber</button>
+          <button type="button" data-theme="lavender" aria-pressed="false"><span class="swatch" style="--swatch:#d1bfff"></span>Lavender</button>
+          <button type="button" data-theme="rose" aria-pressed="false"><span class="swatch" style="--swatch:#eab2be"></span>Rose</button>
+        </div>
+        <p class="theme-description" id="theme-description" role="status">Slate — cool graphite glass with an ice-blue border. Current theme.</p>
+        <p id="error" role="alert"></p>
+        <p>No hover: transparent, with contrast adapted to the dark or light half. Hover: theme color at 80% opacity. This demo knows its background; desktop adaptation needs separate native support.</p>
+      </div>
+      <div class="state" role="status"><strong id="mode">Unlocked</strong><span id="status">Counting down</span></div>
+    </section>
+    <footer class="taskbar" aria-label="Simulated system tray">
+      <span class="tray-note">Right-click the timer icon to unlock</span>
+      <button id="tray" title="Timer tray menu (demo)" aria-label="Open timer tray menu" aria-haspopup="true" aria-expanded="false" aria-controls="tray-menu">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="13" r="8"/><path d="M10 2h4M12 5V2M12 9v4l3 2"/></svg>
+      </button>
+      <span class="clock">UI demo</span>
+    </footer>
+    <div class="menu" id="tray-menu" hidden aria-label="Tray actions">
+      <button id="menu-lock">Lock widget</button>
+      <button id="menu-pause">Pause timer</button>
+      <button id="menu-reset">Reset timer</button>
+      <hr>
+      <button id="menu-hide">Hide widget</button>
+    </div>
+  </main>
+  <script>
+    const $ = id => document.getElementById(id);
+    const stage = document.querySelector(".stage");
+    let total = 25 * 60;
+    let remaining = 18 * 60 + 42;
+    let running = true;
+    let locked = false;
+    let pinned = false;
+    let visible = true;
+    let deadline = performance.now() + remaining * 1000;
+    let drag = null;
+
+    const themes = {
+      slate: { dark: ["#EDF4FC", "#A9CFF5", "#202D3C"], light: ["#243342", "#365F85", "#E8EFF7"] },
+      mint: { dark: ["#EBFFF5", "#9DDFC2", "#193B30"], light: ["#193B30", "#28684F", "#E3F3EA"] },
+      amber: { dark: ["#FFF5E5", "#EDC786", "#40301E"], light: ["#49331B", "#80551D", "#F7EEDC"] },
+      lavender: { dark: ["#F5F0FF", "#CCB8F0", "#362B48"], light: ["#392A50", "#69508D", "#EEE8F6"] },
+      rose: { dark: ["#FFF0F2", "#EAB2BE", "#402A33"], light: ["#4B2933", "#8D465B", "#F7E7EC"] }
+    };
+    let selectedTheme = "slate";
+    function updateTheme() {
+      const bounds = $("timer").getBoundingClientRect();
+      const light = bounds.left + bounds.width / 2 >= innerWidth / 2;
+      const [ink, accent, solid] = themes[selectedTheme][light ? "light" : "dark"];
+      for (const [key, value] of Object.entries({ ink, accent, solid, track: ink + "40" }))
+        stage.style.setProperty(`--${key}`, value);
+      const name = selectedTheme[0].toUpperCase() + selectedTheme.slice(1);
+      $("theme-description").textContent = `${name} / ${light ? "light" : "dark"} background variant. Drag across the split to compare.`;
+    }
+    document.querySelectorAll("[data-theme]").forEach(button => {
+      button.addEventListener("click", () => {
+        selectedTheme = button.dataset.theme;
+        document.querySelectorAll("[data-theme]").forEach(choice =>
+          choice.setAttribute("aria-pressed", String(choice === button)));
+        updateTheme();
+      });
+    });
+
+    $("font").addEventListener("change", () => {
+      $("digits").style.fontFamily = $("font").value;
+    });
+
+    function render() {
+      updateTheme();
+      const seconds = Math.ceil(remaining);
+      $("digits").textContent = `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
+      $("fill").style.strokeDashoffset = `${(1 - remaining / total) * 100}`;
+      $("progress").setAttribute("aria-valuemax", total);
+      $("progress").setAttribute("aria-valuenow", seconds);
+      $("progress").setAttribute("aria-valuetext", `${seconds} seconds remaining`);
+      $("timer").classList.toggle("locked", locked);
+      stage.classList.toggle("locked", locked);
+      document.querySelector(".toolbar").inert = locked;
+      $("timer").tabIndex = locked ? -1 : 0;
+      $("mode").textContent = locked ? "Locked · click-through · always on top" : pinned ? "Unlocked · pinned on top" : "Unlocked";
+      $("pin").setAttribute("aria-pressed", String(pinned));
+      $("status").textContent = remaining === 0 ? "Time is up" : running ? "Counting down" : "Paused";
+      $("hint").textContent = locked
+        ? "Clicks pass through. Use the tray menu to unlock."
+        : running ? "Hover for controls. Drag to find your spot."
+        : "Scroll up / down to set minutes. Resume to start.";
+      $("pause").setAttribute("aria-label", running ? "Pause" : "Resume");
+      $("pause").title = running ? "Pause" : "Resume";
+      $("pause").innerHTML = running
+        ? '<svg viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></svg>'
+        : '<svg viewBox="0 0 24 24"><path d="m9 5 11 7-11 7z"/></svg>';
+      $("menu-lock").textContent = locked ? "Unlock widget" : "Lock widget";
+      $("menu-pause").textContent = running ? "Pause timer" : "Resume timer";
+      $("menu-hide").textContent = visible ? "Hide widget" : "Show widget";
+      stage.hidden = !visible;
+    }
+    function updateTime() {
+      if (running) {
+        remaining = Math.max(0, (deadline - performance.now()) / 1000);
+        if (remaining === 0) running = false;
+      }
+    }
+    function togglePause() {
+      updateTime();
+      if (!running && remaining === 0) remaining = total;
+      running = !running;
+      deadline = performance.now() + remaining * 1000;
+      render();
+    }
+    function reset() {
+      remaining = total;
+      deadline = performance.now() + remaining * 1000;
+      render();
+    }
+    function setLocked(value) { locked = value; render(); }
+    function closeMenu(restoreFocus = false) {
+      $("tray-menu").hidden = true;
+      $("tray").setAttribute("aria-expanded", "false");
+      if (restoreFocus) $("tray").focus();
+    }
+    function openMenu(event) {
+      event.preventDefault();
+      $("tray-menu").hidden = false;
+      $("tray").setAttribute("aria-expanded", "true");
+      $("menu-lock").focus();
+    }
+    $("pause").onclick = togglePause;
+    $("reset").onclick = reset;
+    $("pin").onclick = () => { pinned = !pinned; render(); };
+    $("lock").onclick = () => { setLocked(true); $("tray").focus(); };
+    $("tray").onclick = event => $("tray-menu").hidden ? openMenu(event) : closeMenu();
+    $("tray").oncontextmenu = openMenu;
+    $("menu-lock").onclick = () => { setLocked(!locked); closeMenu(true); };
+    $("menu-pause").onclick = () => { togglePause(); closeMenu(true); };
+    $("menu-reset").onclick = () => { reset(); closeMenu(true); };
+    $("menu-hide").onclick = () => { visible = !visible; render(); closeMenu(true); };
+    document.addEventListener("pointerdown", event => {
+      if (!event.target.closest(".menu, #tray")) closeMenu();
+    });
+    document.addEventListener("keydown", event => {
+      if (event.key === "Escape") closeMenu(true);
+    });
+    $("duration-form").onsubmit = event => {
+      event.preventDefault();
+      const minutes = Number($("minutes").value);
+      if (!Number.isInteger(minutes) || minutes < 1 || minutes > 180) {
+        $("error").textContent = "Enter a whole number from 1 to 180 minutes.";
+        return;
+      }
+      $("error").textContent = "";
+      total = minutes * 60;
+      running = true;
+      reset();
+    };
+    $("timer").addEventListener("wheel", event => {
+      if (locked || running || event.deltaY === 0) return;
+      event.preventDefault();
+      const minutes = Math.max(1, Math.min(180, Math.ceil(total / 60) + (event.deltaY < 0 ? 1 : -1)));
+      if (minutes * 60 === total) return;
+      total = minutes * 60;
+      $("minutes").value = minutes;
+      $("error").textContent = "";
+      reset();
+    }, { passive: false });
+    $("timer").addEventListener("pointerdown", event => {
+      if (locked || event.button !== 0) return;
+      const rect = stage.getBoundingClientRect();
+      drag = { x: event.clientX, y: event.clientY, left: rect.left, top: rect.top };
+      $("timer").setPointerCapture(event.pointerId);
+      $("timer").classList.add("dragging");
+    });
+    $("timer").addEventListener("pointermove", event => {
+      if (!drag || locked) return;
+      const left = Math.max(12, Math.min(innerWidth - stage.offsetWidth - 12, drag.left + event.clientX - drag.x));
+      const top = Math.max(12, Math.min(innerHeight - 150, drag.top + event.clientY - drag.y));
+      stage.style.left = `${left}px`;
+      stage.style.top = `${top}px`;
+      stage.style.transform = "none";
+    });
+    function endDrag() { drag = null; $("timer").classList.remove("dragging"); }
+    $("timer").addEventListener("pointerup", endDrag);
+    $("timer").addEventListener("pointercancel", endDrag);
+    $("timer").addEventListener("lostpointercapture", endDrag);
+    window.addEventListener("resize", () => {
+      stage.style.left = ""; stage.style.top = ""; stage.style.transform = "";
+    });
+    setInterval(() => { updateTime(); render(); }, 200);
+    render();
+  </script>
+</body>
+</html>
