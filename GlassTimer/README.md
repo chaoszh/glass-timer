@@ -48,6 +48,8 @@ dotnet publish .\GlassTimer\GlassTimer.csproj -c Release -r win-x64 --self-conta
 
 Run `GlassTimer.exe` in the output directory. Quit from the tray before replacing
 the executable.
+Native WPF libraries are bundled and extracted automatically at runtime. Only
+the executable needs to be distributed; the PDB is optional debugging information.
 
 Run the dependency-free Windows integration checks:
 
