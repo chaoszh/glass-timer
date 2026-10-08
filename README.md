@@ -1,61 +1,71 @@
 # Glass Timer
 
-Lightweight, transparent Windows 10 (version 2004 or later)/11 desktop timer (.NET 8), with adaptive contrast and a system tray. No network requests or external fonts.
+A minimal Windows countdown timer with a transparent background, adaptive color
+themes, always-on-top pinning, and click-through mode.
 
-```powershell
-dotnet run --project .\GlassTimer\GlassTimer.csproj
-```
+## Download and run
 
-The timer starts stopped at 25 minutes. Hover for Start/Pause, Reset, and Lock.
-Double-click the timer to start or pause. Drag it to move. While stopped and
-unlocked, scroll up/down to adjust the initial duration by one minute (1–180).
-The Consolas digits stay centered; the border represents remaining time.
+1. Open the [latest release](https://github.com/chaoszh/glass-timer/releases/tag/latest).
+2. Under **Assets**, download **GlassTimer.exe**—not the source-code archives.
+3. Run the downloaded executable.
 
-Idle backgrounds appear transparent; unlocked mode uses 1/255 alpha to prevent
-Windows from passing clicks through empty pixels. Locked mode uses zero alpha.
-Hover shows the theme surface
-at 80% opacity, with no shadows or tooltips. The Pin icon independently enables
-always-on-top. Lock implies always-on-top regardless of Pin.
-Choose Slate, Mint, Amber, Lavender, or Rose from the tray's Color theme submenu.
-Themes have paired light/dark foreground, border, and hover colors.
-Every 100 ms while visible, the app samples the screen under the widget using GDI
-SourceCopy. Windows display affinity excludes the timer from capture, so its
-own digits and border do not influence contrast. This also means the timer will
-not appear in screenshots or screen sharing that honor display affinity. Samples remain
-in memory and are neither stored nor sent anywhere. Brightness hysteresis avoids
-rapid theme switching. Sampling continues on hover, and moving the widget or
-entering it triggers an immediate sample. Colors are refreshed by the sampler
-only when the light/dark variant changes.
+No installer or separate .NET installation is required. Only the EXE is needed;
+its bundled runtime libraries are extracted automatically.
 
-Locking keeps the widget glassy, pins it above other windows, prevents activation,
-and passes mouse clicks through to the application underneath. Left-click the
-timer icon in the Windows notification area to unlock. There is no taskbar button.
-Left-click the tray icon to show the widget and bring it in front of other windows.
-Left-click unlocks a locked widget; Pin is preserved. An unpinned widget is brought
-forward without staying topmost.
-The tray menu contains only Color theme and Quit. Completion
-shows a Windows notification; notification delivery depends on Windows settings.
+**Requirements:** Windows 10 version 2004 or later, or Windows 11, on an x64 PC.
 
-Duration, position, and lock state are saved in
-`%LOCALAPPDATA%\GlassTimer\settings.json`. Countdown playback is not restored
-on launch. The app uses alpha transparency rather than native background blur.
+## Use the timer
 
-Build a portable, self-contained executable:
+The timer starts stopped at **25 minutes**. Hover over it to reveal the controls.
+The border shrinks as time runs out.
 
-```powershell
-dotnet publish .\GlassTimer\GlassTimer.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o .\GlassTimer\publish
-```
+| Action | How |
+|---|---|
+| Set the duration | While stopped and unlocked, scroll over the timer. Up adds one minute; down subtracts one minute (1–180). |
+| Start, pause, or resume | Click the play/pause control, or double-click the timer. |
+| Reset | Click the reset arrow to return to the initial duration. A running timer keeps running. |
+| Move | Drag the unlocked timer to your preferred position. |
+| Pin | Click the pin control to keep the timer above other windows. Click again to unpin. |
+| Lock | Click the lock control. The timer stays on top and mouse clicks pass through to the app underneath. |
+| Unlock or bring forward | Left-click the timer icon in the Windows system tray. This unlocks the timer without changing its Pin setting. |
+| Change colors | Right-click the tray icon, then choose **Color theme**. |
+| Quit | Right-click the tray icon and choose **Quit**. |
 
-Run `GlassTimer.exe` in the output directory. Quit from the tray before replacing
-the executable.
-Native WPF libraries are bundled and extracted automatically at runtime. Only
-the executable needs to be distributed; the PDB is optional debugging information.
+Glass Timer has **no taskbar button**. If you cannot find its tray icon, check the
+notification area's hidden-icons menu.
 
-Run the dependency-free Windows integration checks:
+## Appearance
 
-```powershell
-dotnet run --project .\GlassTimer.Tests\GlassTimer.Tests.csproj -c Release
-```
+Choose **Slate, Mint, Amber, Lavender, or Rose**. Each theme adapts its digits and
+border to light or dark backgrounds.
 
-Checks leave saved settings untouched. Most use an invisible window; a brief
-white backdrop and timer overlay verify real screen-capture exclusion.
+At rest, the background looks transparent. Hover reveals the theme background at
+80% opacity and the controls. Locked mode stays transparent and click-through.
+There are no hover tooltips or shadows.
+
+## Saved settings and notifications
+
+The app remembers your initial duration, position, theme, Pin setting, and lock
+state. It starts stopped each time you launch it; an active countdown is not
+restored.
+
+Settings are stored locally in `%LOCALAPPDATA%\GlassTimer\settings.json`.
+When time runs out, the app sends a Windows notification. Windows notification
+settings and Do Not Disturb may prevent it from appearing.
+
+## Screen capture and privacy
+
+Automatic contrast samples the small screen area behind the timer. Samples stay
+in memory and are **never saved or transmitted**.
+
+To avoid sampling its own digits, the timer is excluded from screen capture.
+Consequently, **it may not appear in screenshots, recordings, or screen sharing**
+that honor Windows capture exclusion.
+
+## Updating
+
+Quit the running app from its tray menu, then replace your EXE with the one from
+the [latest release](https://github.com/chaoszh/glass-timer/releases/tag/latest).
+Your saved settings are kept.
+
+For building from source, see the [developer instructions](GlassTimer/README.md).
