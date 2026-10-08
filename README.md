@@ -3,6 +3,8 @@
 A minimal Windows countdown timer with a transparent background, adaptive color
 themes, always-on-top pinning, and click-through mode.
 
+![Glass Timer preview showing the timer in dark and light themes](assets/preview.png)
+
 ## Download and run
 
 1. Open the [latest release](https://github.com/chaoszh/glass-timer/releases/tag/latest).
