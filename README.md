@@ -1,6 +1,6 @@
 # Glass Timer
 
-Windows 10 (version 2004 or later)/11 desktop timer (.NET 8). No network requests or external fonts.
+Lightweight, transparent Windows 10 (version 2004 or later)/11 desktop timer (.NET 8), with adaptive contrast and a system tray. No network requests or external fonts.
 
 ```powershell
 dotnet run --project .\GlassTimer\GlassTimer.csproj
