@@ -30,7 +30,8 @@ The border shrinks as time runs out.
 | Pin | Click the pin control to keep the timer above other windows. Click again to unpin. |
 | Lock | Click the lock control. The timer stays on top and mouse clicks pass through to the app underneath. |
 | Unlock or bring forward | Left-click the timer icon in the Windows system tray. This unlocks the timer without changing its Pin setting. |
-| Change colors | Right-click the tray icon, then choose **Color theme**. |
+| Change colors | Right-click the timer to preview themes on hover and select one, or right-click the tray icon and choose **Color theme**. |
+| Adaptive color and capture | In the tray menu, toggle **Adaptive color**. Off freezes the current contrast and allows screenshots to capture the timer. |
 | Quit | Right-click the tray icon and choose **Quit**. |
 
 Glass Timer has **no taskbar button**. If you cannot find its tray icon, check the
@@ -41,8 +42,9 @@ notification area's hidden-icons menu.
 Choose **Slate, Mint, Amber, Lavender, or Rose**. Each theme adapts its digits and
 border to light or dark backgrounds.
 
-At rest, the background looks transparent. Hover reveals the theme background at
-80% opacity and the controls. Locked mode stays transparent and click-through.
+At rest, the timer face has a 24% theme-tinted background. Hover deepens it to
+80% opacity and reveals the controls. Locked mode keeps the subtle tint while
+remaining click-through. Right-click the timer to preview theme colors before selecting.
 There are no hover tooltips or shadows.
 
 ## Saved settings and notifications
@@ -57,12 +59,12 @@ settings and Do Not Disturb may prevent it from appearing.
 
 ## Screen capture and privacy
 
-Automatic contrast samples the small screen area behind the timer. Samples stay
-in memory and are **never saved or transmitted**.
+When **Adaptive color** is on, automatic contrast samples the small screen area
+behind the timer. Samples stay in memory and are **never saved or transmitted**.
 
-To avoid sampling its own digits, the timer is excluded from screen capture.
-Consequently, **it may not appear in screenshots, recordings, or screen sharing**
-that honor Windows capture exclusion.
+To avoid sampling its own digits, the timer is excluded from screen capture while
+adaptive color is on. Turn it off in the tray menu to allow the timer to appear
+in screenshots, recordings, and screen sharing.
 
 ## Updating
 

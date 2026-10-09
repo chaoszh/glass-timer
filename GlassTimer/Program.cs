@@ -46,6 +46,7 @@ internal sealed class Preferences
     public double? Top { get; set; }
     public bool Locked { get; set; }
     public bool Pinned { get; set; }
+    public bool AdaptiveColor { get; set; } = true;
     public string Theme { get; set; } = "Slate";
 }
 
@@ -58,6 +59,8 @@ internal sealed class TimerWindow : Window
     private readonly DispatcherTimer ticker = new() { Interval = TimeSpan.FromMilliseconds(100) };
     private readonly Forms.NotifyIcon tray;
     private readonly Forms.ContextMenuStrip trayMenu = new();
+    private readonly Forms.ToolStripMenuItem adaptiveItem = new() { CheckOnClick = false };
+    private readonly Forms.ToolStripMenuItem themeMenu = new("Color theme");
     private readonly Border glass;
     private readonly TextBlock digits;
     private readonly System.Windows.Shapes.Path progress;
@@ -82,6 +85,8 @@ internal sealed class TimerWindow : Window
     private readonly Forms.ToolStripMenuItem playItem = new();
     private readonly Forms.ToolStripMenuItem showItem = new();
     private readonly DispatcherTimer hoverDelay = new() { Interval = TimeSpan.FromMilliseconds(180) };
+    private readonly System.Windows.Controls.ContextMenu themeContextMenu = new();
+    private string? previewTheme;
     private double remaining;
     private bool running;
     private bool locked;
@@ -117,6 +122,22 @@ internal sealed class TimerWindow : Window
             Width = 132, HorizontalAlignment = HorizontalAlignment.Center,
             CornerRadius = new CornerRadius(14),
             Background = new SolidColorBrush(Color.FromArgb(105, 21, 36, 50))
+        };
+        root.ContextMenu = themeContextMenu;
+        root.ContextMenuOpening += (_, e) =>
+        {
+            if (locked) e.Handled = true;
+        };
+        glass.ContextMenu = themeContextMenu;
+        themeContextMenu.Resources.MergedDictionaries.Add(new ResourceDictionary
+        {
+            Source = new Uri("/GlassTimer;component/ThemeMenu.xaml", UriKind.Relative)
+        });
+        themeContextMenu.Style = (Style)themeContextMenu.FindResource("ThemeMenu");
+        themeContextMenu.Closed += (_, _) =>
+        {
+            previewTheme = null;
+            ApplyTheme();
         };
         var face = new Grid();
         digits = new TextBlock
@@ -191,19 +212,23 @@ internal sealed class TimerWindow : Window
         LocationChanged += (_, _) => SampleBackground();
         hoverDelay.Tick += (_, _) => { hoverDelay.Stop(); if (!IsMouseOver) SetHover(false); };
 
-        var themeMenu = new Forms.ToolStripMenuItem("Color theme");
         foreach (string name in Themes.Keys)
         {
             var choice = new Forms.ToolStripMenuItem(name) { Checked = name == preferences.Theme };
-            choice.Click += (_, _) =>
-            {
-                preferences.Theme = name;
-                foreach (Forms.ToolStripMenuItem item in themeMenu.DropDownItems) item.Checked = item == choice;
-                ApplyTheme();
-                SavePreferences();
-            };
+            choice.Click += (_, _) => SelectTheme(name);
             themeMenu.DropDownItems.Add(choice);
+            AddThemeContextItem(name);
         }
+        ApplyThemeContextMenu();
+        adaptiveItem.Click += (_, _) =>
+        {
+            try { SetAdaptiveColor(!preferences.AdaptiveColor); }
+            catch (System.ComponentModel.Win32Exception e)
+            {
+                tray?.ShowBalloonTip(5000, "Adaptive color unavailable", e.Message, Forms.ToolTipIcon.Warning);
+            }
+        };
+        trayMenu.Items.Add(adaptiveItem);
         trayMenu.Items.Add(themeMenu);
         trayMenu.Items.Add("Quit", null, (_, _) => Exit());
         lockItem.Click += (_, _) => SetLocked(!locked);
@@ -222,7 +247,7 @@ internal sealed class TimerWindow : Window
         SourceInitialized += (_, _) =>
         {
             handle = new WindowInteropHelper(this).Handle;
-            Native.ExcludeFromCapture(handle);
+            Native.SetCaptureExcluded(handle, preferences.AdaptiveColor);
             ApplyWindowMode();
             SetHover(false);
             SampleBackground();
@@ -230,7 +255,7 @@ internal sealed class TimerWindow : Window
         ticker.Tick += (_, _) => Tick();
         ticker.Start();
         contrastTimer.Tick += (_, _) => SampleBackground();
-        if (!testMode) contrastTimer.Start();
+        if (!testMode && preferences.AdaptiveColor) contrastTimer.Start();
         Closing += (_, e) => { if (!exiting) { e.Cancel = true; Hide(); UpdateDisplay(); } };
         UpdateDisplay();
     }
@@ -271,11 +296,15 @@ internal sealed class TimerWindow : Window
         var hover = new Trigger { Property = IsMouseOverProperty, Value = true };
         hover.Setters.Add(new Setter(Border.BackgroundProperty, new SolidColorBrush(Color.FromArgb(22, 255, 255, 255)), "Surface"));
         template.Triggers.Add(hover);
-        var focus = new Trigger { Property = IsKeyboardFocusedProperty, Value = true };
-        focus.Setters.Add(new Setter(Border.BorderBrushProperty, new SolidColorBrush(Color.FromRgb(182, 220, 255)), "Surface"));
-        focus.Setters.Add(new Setter(Border.BorderThicknessProperty, new Thickness(1), "Surface"));
-        template.Triggers.Add(focus);
         button.Template = template;
+        var focusBorder = new FrameworkElementFactory(typeof(Border));
+        focusBorder.SetValue(Border.CornerRadiusProperty, new CornerRadius(7));
+        focusBorder.SetValue(Border.BorderThicknessProperty, new Thickness(1));
+        focusBorder.SetResourceReference(Border.BorderBrushProperty, "ControlFocus");
+        var focusStyle = new Style(typeof(Control));
+        focusStyle.Setters.Add(new Setter(Control.TemplateProperty,
+            new ControlTemplate(typeof(Control)) { VisualTree = focusBorder }));
+        button.FocusVisualStyle = focusStyle;
         button.MouseEnter += (_, _) => ApplyTheme();
         button.MouseLeave += (_, _) => ApplyTheme();
         button.Click += (_, _) => action();
@@ -338,6 +367,8 @@ internal sealed class TimerWindow : Window
         lockItem.Text = locked ? "Unlock widget" : "Lock widget";
         playItem.Text = running ? "Pause timer" : "Start / resume timer";
         showItem.Text = IsVisible ? "Hide widget" : "Show widget";
+        adaptiveItem.Text = $"Adaptive color: {(preferences.AdaptiveColor ? "On" : "Off")}";
+        adaptiveItem.Checked = preferences.AdaptiveColor;
         tray.Text = $"Glass Timer - {digits.Text}{(running ? "" : " (stopped)")}";
         ApplyTheme();
     }
@@ -397,19 +428,26 @@ internal sealed class TimerWindow : Window
 
     private void ApplyTheme()
     {
-        var colors = Themes[preferences.Theme][lightBackground ? 1 : 0];
+        ApplyThemePreview(previewTheme ?? preferences.Theme);
+    }
+
+    private void ApplyThemePreview(string themeName)
+    {
+        var colors = Themes[themeName][lightBackground ? 1 : 0];
         Color ink = (Color)ColorConverter.ConvertFromString(colors[0]);
         Color accent = (Color)ColorConverter.ConvertFromString(colors[1]);
+        Resources["ControlFocus"] = new SolidColorBrush(accent);
         Color surface = (Color)ColorConverter.ConvertFromString(colors[2]);
         surface.A = 204;
+        Color idleSurface = surface;
+        idleSurface.A = 61;
         digits.Foreground = new SolidColorBrush(ink);
         progress.Stroke = new SolidColorBrush(accent);
         track.Stroke = new SolidColorBrush(Color.FromArgb(64, ink.R, ink.G, ink.B));
-        // Layered windows pass through zero-alpha pixels even without WS_EX_TRANSPARENT.
-        glass.Background = hovered ? new SolidColorBrush(surface)
-            : locked ? Brushes.Transparent : new SolidColorBrush(Color.FromArgb(1, 0, 0, 0));
+        glass.Background = new SolidColorBrush(hovered ? surface : idleSurface);
         toolbarFrame.Background = new SolidColorBrush(surface);
         toolbarFrame.BorderBrush = track.Stroke;
+        ApplyThemeContextMenu(ink, accent, surface);
         foreach (Button button in toolbar.Children)
         {
             bool selected = button == pin && preferences.Pinned;
@@ -424,9 +462,95 @@ internal sealed class TimerWindow : Window
             preferences.Pinned ? "Unpin always on top" : "Pin always on top");
     }
 
+    private void AddThemeContextItem(string name)
+    {
+        var item = new System.Windows.Controls.MenuItem
+        {
+            Header = name,
+            IsCheckable = true,
+            IsChecked = name == preferences.Theme,
+            Tag = name,
+            Style = (Style)themeContextMenu.FindResource("ThemeMenuItem"),
+            Icon = new Ellipse
+            {
+                Width = 9, Height = 9,
+                Fill = new SolidColorBrush((Color)ColorConverter.ConvertFromString(Themes[name][0][1]))
+            }
+        };
+        item.MouseEnter += (_, _) => { previewTheme = name; ApplyTheme(); };
+        item.MouseLeave += (_, _) =>
+        {
+            previewTheme = themeContextMenu.IsKeyboardFocusWithin
+                ? (Keyboard.FocusedElement as System.Windows.Controls.MenuItem)?.Tag as string : null;
+            ApplyTheme();
+        };
+        item.GotKeyboardFocus += (_, _) => { previewTheme = name; ApplyTheme(); };
+        item.LostKeyboardFocus += (_, _) =>
+        {
+            previewTheme = null;
+            ApplyTheme();
+        };
+        item.Click += (_, _) => SelectTheme(name);
+        themeContextMenu.Items.Add(item);
+    }
+
+    private void SelectTheme(string name)
+    {
+        previewTheme = null;
+        preferences.Theme = name;
+        foreach (Forms.ToolStripMenuItem item in themeMenu.DropDownItems) item.Checked = item.Text == name;
+        foreach (System.Windows.Controls.MenuItem item in themeContextMenu.Items)
+            item.IsChecked = item.Tag as string == name;
+        ApplyTheme();
+        SavePreferences();
+    }
+
+    private void ApplyThemeContextMenu()
+    {
+        if (themeContextMenu.Items.Count == 0) return;
+        var colors = Themes[preferences.Theme][lightBackground ? 1 : 0];
+        ApplyThemeContextMenu(
+            (Color)ColorConverter.ConvertFromString(colors[0]),
+            (Color)ColorConverter.ConvertFromString(colors[1]),
+            (Color)ColorConverter.ConvertFromString(colors[2]));
+    }
+
+    private void ApplyThemeContextMenu(Color ink, Color accent, Color surface)
+    {
+        surface.A = 245;
+        themeContextMenu.Background = new SolidColorBrush(surface);
+        themeContextMenu.Foreground = new SolidColorBrush(ink);
+        themeContextMenu.BorderBrush = new SolidColorBrush(Color.FromArgb(61, ink.R, ink.G, ink.B));
+        themeContextMenu.BorderThickness = new Thickness(1);
+        themeContextMenu.Resources["MenuInk"] = new SolidColorBrush(ink);
+        themeContextMenu.Resources["MenuAccent"] = new SolidColorBrush(accent);
+        themeContextMenu.Resources["MenuHeading"] = new SolidColorBrush(Color.FromArgb(173, ink.R, ink.G, ink.B));
+        themeContextMenu.Resources["MenuHover"] = new SolidColorBrush(Color.FromArgb(31, ink.R, ink.G, ink.B));
+    }
+
+    private void SetAdaptiveColor(bool enabled)
+    {
+        if (handle != IntPtr.Zero) Native.SetCaptureExcluded(handle, enabled);
+        preferences.AdaptiveColor = enabled;
+        adaptiveItem.Text = $"Adaptive color: {(enabled ? "On" : "Off")}";
+        adaptiveItem.Checked = enabled;
+        if (enabled && !testMode)
+        {
+            captureErrorReported = false;
+            SampleBackground();
+            if (!captureErrorReported) contrastTimer.Start();
+        }
+        else
+        {
+            contrastTimer.Stop();
+        }
+        ApplyTheme();
+        SavePreferences();
+    }
+
     private void SampleBackground()
     {
-        if (testMode || !IsVisible || captureErrorReported || handle == IntPtr.Zero) return;
+        if (testMode || !preferences.AdaptiveColor || !IsVisible || captureErrorReported || handle == IntPtr.Zero) return;
         try
         {
             Point topLeft = glass.PointToScreen(new Point(0, 0));
@@ -575,10 +699,11 @@ internal static class Native
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool SetWindowDisplayAffinity(IntPtr hwnd, uint affinity);
 
-    internal static void ExcludeFromCapture(IntPtr hwnd)
+    internal static void SetCaptureExcluded(IntPtr hwnd, bool excluded)
     {
-        if (!SetWindowDisplayAffinity(hwnd, 0x11))
-            throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error(), "Could not exclude timer from screen capture.");
+        if (!SetWindowDisplayAffinity(hwnd, excluded ? 0x11u : 0u))
+            throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error(),
+                excluded ? "Could not exclude timer from screen capture." : "Could not allow timer to appear in screen capture.");
     }
 
 
