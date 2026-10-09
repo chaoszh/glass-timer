@@ -299,6 +299,40 @@ internal static class Program
             Call(window, "StartAlarm");
             Call(window, "ResetTimer");
             Check("reset clears alarm and restores border", !Field<bool>(window, "ringing") && progress.Visibility == Visibility.Visible);
+            Call(window, "ToggleRunning");
+            preferences.Minutes = 1;
+            preferences.Repeating = false;
+            Call(window, "ResetTimer");
+            Set(window, "remaining", 10d);
+            Call(window, "ToggleRepeat");
+            var elapsedDigits = Field<TextBlock>(window, "elapsedDigits");
+            Check("enabling repeat includes current round elapsed immediately",
+                digits.Text == "00:10" && elapsedDigits.Text == "00:50" &&
+                elapsedDigits.Visibility == Visibility.Visible);
+            window.UpdateLayout();
+            var elapsedOrigin = elapsedDigits.TranslatePoint(new Point(), glass);
+            Check("mini elapsed readout fits beneath countdown without resizing",
+                elapsedDigits.FontSize == 11 && elapsedOrigin.Y > digits.TranslatePoint(new Point(), glass).Y &&
+                elapsedOrigin.Y + elapsedDigits.ActualHeight < glass.ActualHeight &&
+                glass.ActualWidth == 132 && glass.ActualHeight == 58);
+            Call(window, "ToggleRunning");
+            Set(window, "remaining", -125d);
+            Call(window, "Tick");
+            Check("elapsed accumulates across multiple skipped rounds",
+                elapsedDigits.Text == "03:05" && Field<double>(window, "completedDuration") == 180);
+            Call(window, "ToggleRunning");
+            string pausedElapsed = elapsedDigits.Text;
+            Thread.Sleep(100);
+            Call(window, "Tick");
+            Check("paused elapsed freezes", elapsedDigits.Text == pausedElapsed);
+            Call(window, "ToggleRepeat");
+            Check("disabling repeat hides mini readout", elapsedDigits.Visibility == Visibility.Collapsed);
+            Call(window, "ToggleRepeat");
+            Check("reenabling repeat starts total from the current round",
+                elapsedDigits.Text == "00:05" && Field<double>(window, "completedDuration") == 0);
+            Call(window, "ResetTimer");
+            Check("reset clears elapsed session", elapsedDigits.Text == "00:00" &&
+                Field<double>(window, "completedDuration") == 0);
             Console.WriteLine($"{checks} integration checks passed.");
             return 0;
         }

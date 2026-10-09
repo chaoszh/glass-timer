@@ -65,6 +65,7 @@ internal sealed class TimerWindow : Window
     private readonly Forms.ToolStripMenuItem themeMenu = new("Color theme");
     private readonly Border glass;
     private readonly TextBlock digits;
+    private readonly TextBlock elapsedDigits;
     private readonly System.Windows.Shapes.Path progress;
     private readonly StackPanel toolbar;
     private readonly Border toolbarFrame;
@@ -92,6 +93,7 @@ internal sealed class TimerWindow : Window
     private readonly System.Windows.Controls.ContextMenu themeContextMenu = new();
     private string? previewTheme;
     private double remaining;
+    private double completedDuration;
     private bool running;
     private bool ringing;
     private bool locked;
@@ -157,7 +159,20 @@ internal sealed class TimerWindow : Window
             VerticalAlignment = VerticalAlignment.Center
         };
         var geometry = Geometry.Parse("M66,1 L118,1 A13,13 0 0 1 131,14 L131,44 A13,13 0 0 1 118,57 L14,57 A13,13 0 0 1 1,44 L1,14 A13,13 0 0 1 14,1 Z");
-        face.Children.Add(digits);
+        elapsedDigits = new TextBlock
+        {
+            FontFamily = new FontFamily("Consolas"), FontSize = 11,
+            TextAlignment = TextAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center,
+            Visibility = Visibility.Collapsed, Margin = new Thickness(0, 4, 0, 0)
+        };
+        var readout = new StackPanel
+        {
+            VerticalAlignment = VerticalAlignment.Center,
+            HorizontalAlignment = HorizontalAlignment.Center
+        };
+        readout.Children.Add(digits);
+        readout.Children.Add(elapsedDigits);
+        face.Children.Add(readout);
         track = new System.Windows.Shapes.Path
         {
             Data = geometry, Stroke = new SolidColorBrush(Color.FromArgb(50, 255, 255, 255)),
@@ -343,8 +358,12 @@ internal sealed class TimerWindow : Window
         if (running && CurrentRemaining <= 0)
         {
             if (preferences.Repeating)
-                remaining += (Math.Floor((clock.Elapsed.TotalSeconds - remaining) / (preferences.Minutes * 60)) + 1)
+            {
+                double duration = (Math.Floor((clock.Elapsed.TotalSeconds - remaining) / (preferences.Minutes * 60)) + 1)
                     * preferences.Minutes * 60;
+                completedDuration += duration;
+                remaining += duration;
+            }
             else
             {
                 remaining = 0;
@@ -360,13 +379,22 @@ internal sealed class TimerWindow : Window
     {
         if (running)
         {
+            Tick();
+            if (!running) return;
+        }
+        if (running)
+        {
             remaining = CurrentRemaining;
             running = false;
             clock.Reset();
         }
         else
         {
-            if (remaining <= 0) remaining = preferences.Minutes * 60;
+            if (remaining <= 0)
+            {
+                remaining = preferences.Minutes * 60;
+                completedDuration = 0;
+            }
             clock.Restart();
             running = true;
         }
@@ -376,6 +404,7 @@ internal sealed class TimerWindow : Window
     private void ResetTimer()
     {
         StopAlarm();
+        completedDuration = 0;
         remaining = preferences.Minutes * 60;
         clock.Restart();
         if (!running) clock.Stop();
@@ -387,6 +416,10 @@ internal sealed class TimerWindow : Window
         double seconds = CurrentRemaining;
         int rounded = (int)Math.Ceiling(seconds);
         digits.Text = $"{rounded / 60:00}:{rounded % 60:00}";
+        long elapsed = (long)Math.Floor(completedDuration + preferences.Minutes * 60 - seconds + 0.000001);
+        elapsedDigits.Text = $"{elapsed / 60:00}:{elapsed % 60:00}";
+        elapsedDigits.Visibility = preferences.Repeating ? Visibility.Visible : Visibility.Collapsed;
+        System.Windows.Automation.AutomationProperties.SetName(elapsedDigits, $"Total elapsed time: {elapsed} seconds");
         double fraction = seconds / (preferences.Minutes * 60);
         progress.StrokeDashArray = new DoubleCollection { Perimeter * fraction / 2, Perimeter / 2 };
         progress.Visibility = !ringing && fraction > 0 ? Visibility.Visible : Visibility.Hidden;
@@ -465,7 +498,8 @@ internal sealed class TimerWindow : Window
     {
         Tick();
         preferences.Repeating = !preferences.Repeating;
-        ApplyTheme();
+        if (preferences.Repeating) completedDuration = 0;
+        UpdateDisplay();
         SavePreferences();
     }
 
@@ -524,6 +558,7 @@ internal sealed class TimerWindow : Window
         Color idleSurface = surface;
         idleSurface.A = 61;
         digits.Foreground = new SolidColorBrush(ink);
+        elapsedDigits.Foreground = digits.Foreground;
         progress.Stroke = new SolidColorBrush(accent);
         track.Stroke = new SolidColorBrush(Color.FromArgb(64, ink.R, ink.G, ink.B));
         glass.Background = new SolidColorBrush(hovered ? surface : idleSurface);
@@ -532,6 +567,7 @@ internal sealed class TimerWindow : Window
         {
             glass.Background = new SolidColorBrush(Color.FromRgb(180, 35, 50));
             digits.Foreground = Brushes.White;
+            elapsedDigits.Foreground = Brushes.White;
         }
         toolbarFrame.Background = new SolidColorBrush(surface);
         toolbarFrame.BorderBrush = track.Stroke;

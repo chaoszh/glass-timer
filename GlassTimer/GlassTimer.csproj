@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
+    <ApplicationIcon>GlassTimer.ico</ApplicationIcon>
     <TargetFramework>net8.0-windows</TargetFramework>
     <Description>A lightweight, transparent Windows desktop countdown timer with adaptive contrast and a system tray.</Description>
     <UseWPF>true</UseWPF>

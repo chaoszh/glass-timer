@@ -55,6 +55,12 @@ The app remembers your initial duration, position, theme, repeat mode, adaptive 
 state. It starts stopped each time you launch it; an active countdown is not
 restored.
 
+Repeat mode shows total elapsed time in a small line below the countdown,
+including time already spent in the current round before enabling repeat.
+It accumulates across rounds and freezes while paused. Turning repeat off and on
+starts a new total from the elapsed portion of the current round. It resets to zero on Reset
+or when starting a new session after completion. The total is not saved across launches.
+
 Settings are stored locally in `%LOCALAPPDATA%\GlassTimer\settings.json`.
 When time runs out, the timer turns red with white digits and vibrates horizontally
 and vertically until dismissed. There is no completion notification or sound.
