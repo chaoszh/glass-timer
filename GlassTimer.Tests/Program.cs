@@ -58,12 +58,12 @@ internal static class Program
                 glass.ActualWidth == 132 && glass.ActualHeight == 58 && !window.ShowInTaskbar);
             var center = digits.TranslatePoint(new Point(digits.ActualWidth / 2, digits.ActualHeight / 2), glass);
             Check("digits centered", Math.Abs(center.X - 66) < 0.1 && Math.Abs(center.Y - 29) < 0.1);
-            var image = new RenderTargetBitmap(192, 124, 96, 96, PixelFormats.Pbgra32);
+            var image = new RenderTargetBitmap(234, 124, 96, 96, PixelFormats.Pbgra32);
             image.Render((Visual)window.Content);
             byte[] pixel = new byte[4];
             image.CopyPixels(new Int32Rect(0, 90, 1, 1), pixel, 4, 0);
             Check("outside widget renders fully transparent", pixel[3] == 0);
-            image.CopyPixels(new Int32Rect(40, 29, 1, 1), pixel, 4, 0);
+            image.CopyPixels(new Int32Rect(61, 32, 1, 1), pixel, 4, 0);
             Check("unlocked idle face has translucent theme surface", pixel[3] is >= 60 and <= 62);
             void Wheel(int delta) => glass.RaiseEvent(new MouseWheelEventArgs(Mouse.PrimaryDevice, 0, delta)
                 { RoutedEvent = UIElement.MouseWheelEvent });
@@ -256,6 +256,49 @@ internal static class Program
             Check("empty border at zero", digits.Text == "00:00" && progress.Visibility == Visibility.Hidden);
             Call(window, "ToggleRunning");
             Check("restart after zero", Field<bool>(window, "running") && digits.Text == "25:00");
+            Check("repeat control fits expanded toolbar", toolbar.Children.Count == 5 && window.Width == 234);
+            var animationFactory = typeof(TimerWindow).GetMethod("CreateAlarmAnimation", BindingFlags.Static | BindingFlags.NonPublic)!;
+            var vibration = (System.Windows.Media.Animation.DoubleAnimationUsingKeyFrames)animationFactory.Invoke(null,
+                new object[] { new double[] { -3, 3, -3, 3, -3, 3 } })!;
+            Check("vibration matches demo cadence without scaling",
+                vibration.Duration.TimeSpan == TimeSpan.FromSeconds(1) &&
+                vibration.KeyFrames[1].Value == -3 && vibration.KeyFrames[6].Value == 3 &&
+                vibration.KeyFrames[7].KeyTime.TimeSpan == TimeSpan.FromSeconds(0.45) &&
+                glass.RenderTransform is TranslateTransform);
+            Set(window, "remaining", -2d);
+            Call(window, "Tick");
+            Check("completion rings with red face, white digits and no perimeter",
+                Field<bool>(window, "ringing") && !Field<bool>(window, "running") &&
+                ((SolidColorBrush)glass.Background).Color == Color.FromRgb(180, 35, 50) &&
+                ((SolidColorBrush)digits.Foreground).Color == Colors.White &&
+                progress.Visibility == Visibility.Hidden &&
+                Field<System.Windows.Shapes.Path>(window, "track").Visibility == Visibility.Hidden &&
+                Field<TranslateTransform>(window, "alarmOffset").HasAnimatedProperties);
+            Call(window, "SetLocked", true);
+            Check("locked alarm temporarily accepts dismissal without changing lock preference",
+                preferences.Locked && (GetWindowLong(handle, -20) & 0x20) == 0);
+            Call(window, "StopAlarm");
+            Check("dismissal restores click-through and removes vibration",
+                (GetWindowLong(handle, -20) & 0x20) != 0 &&
+                !Field<TranslateTransform>(window, "alarmOffset").HasAnimatedProperties);
+            Call(window, "SetLocked", false);
+            Call(window, "ToggleRepeat");
+            Check("repeat preference toggles without starting stopped timer", preferences.Repeating && !Field<bool>(window, "running"));
+            var restored = System.Text.Json.JsonSerializer.Deserialize<Preferences>(
+                System.Text.Json.JsonSerializer.Serialize(preferences))!;
+            Check("repeat preference survives serialization with backwards-compatible default",
+                restored.Repeating && !System.Text.Json.JsonSerializer.Deserialize<Preferences>("{}")!.Repeating);
+            Call(window, "ToggleRunning");
+            Set(window, "remaining", -3001d);
+            Call(window, "Tick");
+            Check("repeat skips elapsed rounds and rings while next round runs",
+                Field<bool>(window, "running") && Field<bool>(window, "ringing") &&
+                Field<double>(window, "remaining") > 0 && Field<double>(window, "remaining") <= 1500);
+            Call(window, "StopAlarm");
+            Check("dismissing repeat alarm leaves countdown running", Field<bool>(window, "running"));
+            Call(window, "StartAlarm");
+            Call(window, "ResetTimer");
+            Check("reset clears alarm and restores border", !Field<bool>(window, "ringing") && progress.Visibility == Visibility.Visible);
             Console.WriteLine($"{checks} integration checks passed.");
             return 0;
         }

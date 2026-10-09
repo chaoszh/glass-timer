@@ -122,6 +122,22 @@
     .app-menu button { display: flex; align-items: center; gap: 9px; }
     .app-menu .swatch { flex: 0 0 9px; margin: 0; }
     .app-menu button[aria-checked="true"]::after { content: "✓"; margin-left: auto; color: var(--accent); }
+    .stage.ringing .timer {
+      background: #b42332 !important; color: #fff !important;
+      animation: alarm-vibrate 1s ease-in-out infinite; cursor: pointer;
+      box-shadow: none;
+    }
+    .stage.ringing .track { visibility: hidden; }
+    .stage.ringing .fill { visibility: hidden; }
+    .stage.ringing.locked .timer, .stage.ringing.locked .timer * { pointer-events: auto; }
+    #test-alarm { border: 1px solid #ffffff40; border-radius: 6px; padding: 6px 10px; background: transparent; font-size: 12px; }
+    @keyframes alarm-vibrate {
+      0%, 45%, 100% { transform: translate(0, 0); }
+      6%, 30% { transform: translate(-3px, -2px); }
+      12%, 36% { transform: translate(3px, 2px); }
+      18% { transform: translate(-3px, 2px); }
+      24% { transform: translate(3px, -2px); }
+    }
     @media (max-width: 600px) {
       header { padding: 26px 24px; }
       .stage { top: 26%; }
@@ -132,7 +148,9 @@
       .tray-note { font-size: 11px; }
     }
     @media (max-height: 620px) { .stage { top: 32%; } .settings { bottom: 70px; } .settings p { max-width: 300px; } }
-    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; } }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { transition: none !important; }
+    }
   </style>
 </head>
 <body>
@@ -153,6 +171,7 @@
       <div class="toolbar" aria-label="Timer controls">
         <button id="pause" title="Pause" aria-label="Pause"><svg viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></svg></button>
         <button id="reset" title="Reset" aria-label="Reset"><svg viewBox="0 0 24 24"><path d="M4 10a8 8 0 1 1 2 8M4 4v6h6"/></svg></button>
+        <button id="repeat" aria-label="Enable repeat timer" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="m18 2 3 3-3 3M21 5H7a4 4 0 0 0-4 4M6 22l-3-3 3-3M3 19h14a4 4 0 0 0 4-4"/><path d="m11 10 1-1v6"/></svg></button>
         <button id="pin" aria-label="Pin always on top" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="M8 3h8M9 3v7l-3 4h12l-3-4V3M12 14v7"/></svg></button>
         <button id="lock" title="Lock widget" aria-label="Lock widget"><svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></button>
       </div>
@@ -196,6 +215,7 @@
       <div class="state" role="status"><strong id="mode">Unlocked</strong><span id="status">Counting down</span></div>
     </section>
     <footer class="taskbar" aria-label="Simulated system tray">
+      <button id="test-alarm" type="button">Test alarm</button>
       <span class="tray-note">Tray menu: adaptive color, lock, timer actions</span>
       <button id="tray" title="Timer tray menu (demo)" aria-label="Open timer tray menu" aria-haspopup="true" aria-expanded="false" aria-controls="tray-menu">
         <svg viewBox="0 0 24 24"><circle cx="12" cy="13" r="8"/><path d="M10 2h4M12 5V2M12 9v4l3 2"/></svg>
@@ -229,11 +249,13 @@
     let running = true;
     let locked = false;
     let pinned = false;
+    let repeating = false;
     let visible = true;
     let adaptiveColor = true;
     let fixedVariant = "dark";
     let deadline = performance.now() + remaining * 1000;
     let drag = null;
+    let ringing = false;
 
     const themes = {
       slate: { dark: ["#EDF4FC", "#A9CFF5", "#202D3C"], light: ["#243342", "#365F85", "#E8EFF7"] },
@@ -289,12 +311,20 @@
       $("progress").setAttribute("aria-valuetext", `${seconds} seconds remaining`);
       $("timer").classList.toggle("locked", locked);
       stage.classList.toggle("locked", locked);
+      stage.classList.toggle("ringing", ringing);
       document.querySelector(".toolbar").inert = locked;
-      $("timer").tabIndex = locked ? -1 : 0;
+      $("timer").tabIndex = locked && !ringing ? -1 : 0;
       $("mode").textContent = locked ? "Locked · click-through · always on top" : pinned ? "Unlocked · pinned on top" : "Unlocked";
       $("pin").setAttribute("aria-pressed", String(pinned));
-      $("status").textContent = remaining === 0 ? "Time is up" : running ? "Counting down" : "Paused";
-      $("hint").textContent = locked
+      $("repeat").setAttribute("aria-pressed", String(repeating));
+      $("repeat").setAttribute("aria-label", repeating ? "Disable repeat timer" : "Enable repeat timer");
+      $("status").textContent = (remaining === 0 ? "Time is up" : running ? "Counting down" : "Paused")
+        + (repeating ? " / Repeat on" : "");
+      if (ringing) $("status").textContent = repeating && running
+        ? "Alarm ringing / Next countdown running" : "Alarm ringing";
+      $("hint").textContent = ringing
+        ? "Time is up. Click the timer to stop the alarm."
+        : locked
         ? "Clicks pass through. Use the tray menu to unlock."
         : running ? "Hover for controls. Drag to find your spot."
         : "Scroll up / down to set minutes. Resume to start.";
@@ -313,12 +343,39 @@
         : "Screen capture exclusion is off; the timer can be captured.";
       stage.hidden = !visible;
     }
-    function updateTime() {
+    function updateTime(now = performance.now()) {
       if (running) {
-        remaining = Math.max(0, (deadline - performance.now()) / 1000);
+        const completed = now >= deadline;
+        if (repeating && now >= deadline) {
+          const cycle = total * 1000;
+          deadline += (Math.floor((now - deadline) / cycle) + 1) * cycle;
+        }
+        remaining = Math.max(0, (deadline - now) / 1000);
         if (remaining === 0) running = false;
+        if (completed) startAlarm();
       }
     }
+    function startAlarm() {
+      ringing = true;
+      visible = true;
+      render();
+    }
+    function stopAlarm() {
+      ringing = false;
+      render();
+    }
+    $("test-alarm").onclick = startAlarm;
+    $("timer").addEventListener("click", event => {
+      if (!ringing) return;
+      event.preventDefault();
+      stopAlarm();
+    });
+    $("timer").addEventListener("keydown", event => {
+      if (ringing && (event.key === "Enter" || event.key === " ")) {
+        event.preventDefault();
+        stopAlarm();
+      }
+    });
     function togglePause() {
       updateTime();
       if (!running && remaining === 0) remaining = total;
@@ -327,6 +384,7 @@
       render();
     }
     function reset() {
+      ringing = false;
       remaining = total;
       deadline = performance.now() + remaining * 1000;
       render();
@@ -378,6 +436,11 @@
     }
     $("pause").onclick = togglePause;
     $("reset").onclick = reset;
+    $("repeat").onclick = () => {
+      updateTime();
+      repeating = !repeating;
+      render();
+    };
     $("pin").onclick = () => { pinned = !pinned; render(); };
     $("lock").onclick = () => { setLocked(true); $("tray").focus(); };
     $("tray").onclick = event => $("tray-menu").hidden ? openMenu(event) : closeMenu();
@@ -442,7 +505,7 @@
       reset();
     }, { passive: false });
     $("timer").addEventListener("pointerdown", event => {
-      if (locked || event.button !== 0) return;
+      if (locked || ringing || event.button !== 0) return;
       const rect = stage.getBoundingClientRect();
       drag = { x: event.clientX, y: event.clientY, left: rect.left, top: rect.top };
       $("timer").setPointerCapture(event.pointerId);

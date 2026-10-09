@@ -7,7 +7,7 @@ themes, always-on-top pinning, and click-through mode.
 
 ## Download and run
 
-1. Open the [latest release](https://github.com/chaoszh/glass-timer/releases/tag/latest).
+1. Open the [latest release](https://github.com/chaoszh/glass-timer/releases/latest).
 2. Under **Assets**, download **GlassTimer.exe**—not the source-code archives.
 3. Run the downloaded executable.
 
@@ -26,6 +26,8 @@ The border shrinks as time runs out.
 | Set the duration | While stopped and unlocked, scroll over the timer. Up adds one minute; down subtracts one minute (1–180). |
 | Start, pause, or resume | Click the play/pause control, or double-click the timer. |
 | Reset | Click the reset arrow to return to the initial duration. A running timer keeps running. |
+| Repeat | Toggle the repeat-one control to automatically start another countdown when time runs out. |
+| Stop alarm | Click the red timer, or focus it and press Enter or Space. A repeating countdown keeps running. |
 | Move | Drag the unlocked timer to your preferred position. |
 | Pin | Click the pin control to keep the timer above other windows. Click again to unpin. |
 | Lock | Click the lock control. The timer stays on top and mouse clicks pass through to the app underneath. |
@@ -47,15 +49,17 @@ At rest, the timer face has a 24% theme-tinted background. Hover deepens it to
 remaining click-through. Right-click the timer to preview theme colors before selecting.
 There are no hover tooltips or shadows.
 
-## Saved settings and notifications
+## Saved settings and alarm
 
-The app remembers your initial duration, position, theme, Pin setting, and lock
+The app remembers your initial duration, position, theme, repeat mode, adaptive color, Pin setting, and lock
 state. It starts stopped each time you launch it; an active countdown is not
 restored.
 
 Settings are stored locally in `%LOCALAPPDATA%\GlassTimer\settings.json`.
-When time runs out, the app sends a Windows notification. Windows notification
-settings and Do Not Disturb may prevent it from appearing.
+When time runs out, the timer turns red with white digits and vibrates horizontally
+and vertically until dismissed. There is no completion notification or sound.
+While the alarm is active, a locked timer temporarily accepts clicks so you can
+dismiss it; click-through is restored afterward.
 
 ## Screen capture and privacy
 
@@ -69,7 +73,7 @@ in screenshots, recordings, and screen sharing.
 ## Updating
 
 Quit the running app from its tray menu, then replace your EXE with the one from
-the [latest release](https://github.com/chaoszh/glass-timer/releases/tag/latest).
+the [latest release](https://github.com/chaoszh/glass-timer/releases/latest).
 Your saved settings are kept.
 
 For building from source, see the [developer instructions](GlassTimer/README.md).

@@ -8,6 +8,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Shapes;
 using System.Windows.Threading;
 using Forms = System.Windows.Forms;
@@ -47,6 +48,7 @@ internal sealed class Preferences
     public bool Locked { get; set; }
     public bool Pinned { get; set; }
     public bool AdaptiveColor { get; set; } = true;
+    public bool Repeating { get; set; }
     public string Theme { get; set; } = "Slate";
 }
 
@@ -68,6 +70,8 @@ internal sealed class TimerWindow : Window
     private readonly Border toolbarFrame;
     private readonly Button play;
     private readonly Button pin;
+    private readonly Button repeat;
+    private readonly TranslateTransform alarmOffset = new();
     private readonly System.Windows.Shapes.Path track;
     private readonly DispatcherTimer contrastTimer = new() { Interval = TimeSpan.FromMilliseconds(100) };
     private bool hovered;
@@ -89,6 +93,7 @@ internal sealed class TimerWindow : Window
     private string? previewTheme;
     private double remaining;
     private bool running;
+    private bool ringing;
     private bool locked;
     private bool exiting;
     private IntPtr handle;
@@ -102,7 +107,7 @@ internal sealed class TimerWindow : Window
         remaining = preferences.Minutes * 60;
         locked = preferences.Locked;
         Title = "Glass Timer";
-        Width = 192;
+        Width = 234;
         Height = 124;
         WindowStyle = WindowStyle.None;
         ResizeMode = ResizeMode.NoResize;
@@ -114,12 +119,13 @@ internal sealed class TimerWindow : Window
         Top = preferences.Top ?? SystemParameters.WorkArea.Top + 80;
         ClampPosition();
 
-        var root = new Grid { Margin = new Thickness(8, 4, 8, 0) };
+        var root = new Grid { Margin = new Thickness(8, 7, 8, 0) };
         root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(58) });
         root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(58) });
         glass = new Border
         {
             Width = 132, HorizontalAlignment = HorizontalAlignment.Center,
+            RenderTransform = alarmOffset,
             CornerRadius = new CornerRadius(14),
             Background = new SolidColorBrush(Color.FromArgb(105, 21, 36, 50))
         };
@@ -181,6 +187,8 @@ internal sealed class TimerWindow : Window
         };
         play = AddButton("M9,5 L20,12 L9,19 Z", "Start / pause / resume timer", ToggleRunning);
         AddButton("M4,10 A8,8 0 1 1 6,18 M4,4 L4,10 L10,10", "Reset to initial duration", ResetTimer);
+        repeat = AddButton("M18,2 L21,5 L18,8 M21,5 L7,5 A4,4 0 0 0 3,9 M6,22 L3,19 L6,16 M3,19 L17,19 A4,4 0 0 0 21,15 M11,10 L12,9 L12,15",
+            "Enable repeat timer", ToggleRepeat);
         pin = AddButton("M8,3 L16,3 M9,3 L9,10 L6,14 L18,14 L15,10 L15,3 M12,14 L12,21", "Pin always on top", TogglePin);
         AddButton("M7,10 L17,10 Q19,10 19,12 L19,19 Q19,21 17,21 L7,21 Q5,21 5,19 L5,12 Q5,10 7,10 M8,10 L8,7 A4,4 0 0 1 16,7 L16,10", "Lock position and pass clicks through", () => SetLocked(true));
         Grid.SetRow(toolbarFrame, 1);
@@ -189,6 +197,12 @@ internal sealed class TimerWindow : Window
 
         glass.MouseLeftButtonDown += (_, e) =>
         {
+            if (ringing)
+            {
+                StopAlarm();
+                e.Handled = true;
+                return;
+            }
             if (locked) return;
             if (e.ClickCount == 2) ToggleRunning();
             else
@@ -198,9 +212,18 @@ internal sealed class TimerWindow : Window
                 SavePreferences();
             }
         };
+        glass.Focusable = true;
+        glass.KeyDown += (_, e) =>
+        {
+            if (ringing && e.Key is Key.Enter or Key.Space)
+            {
+                StopAlarm();
+                e.Handled = true;
+            }
+        };
         glass.MouseWheel += (_, e) =>
         {
-            if (locked || running || e.Delta == 0) return;
+            if (locked || ringing || running || e.Delta == 0) return;
             preferences.Minutes = Math.Clamp(preferences.Minutes + Math.Sign(e.Delta), 1, 180);
             ResetTimer();
             SavePreferences();
@@ -241,6 +264,7 @@ internal sealed class TimerWindow : Window
         tray.MouseClick += (_, e) =>
         {
             if (e.Button != Forms.MouseButtons.Left) return;
+            if (ringing) { StopAlarm(); return; }
             if (locked) SetLocked(false);
             BringToFront();
         };
@@ -318,10 +342,16 @@ internal sealed class TimerWindow : Window
     {
         if (running && CurrentRemaining <= 0)
         {
-            remaining = 0;
-            running = false;
-            clock.Reset();
-            tray.ShowBalloonTip(5000, "Glass Timer", "Time is up.", Forms.ToolTipIcon.Info);
+            if (preferences.Repeating)
+                remaining += (Math.Floor((clock.Elapsed.TotalSeconds - remaining) / (preferences.Minutes * 60)) + 1)
+                    * preferences.Minutes * 60;
+            else
+            {
+                remaining = 0;
+                running = false;
+                clock.Reset();
+            }
+            StartAlarm();
         }
         UpdateDisplay();
     }
@@ -345,6 +375,7 @@ internal sealed class TimerWindow : Window
 
     private void ResetTimer()
     {
+        StopAlarm();
         remaining = preferences.Minutes * 60;
         clock.Restart();
         if (!running) clock.Stop();
@@ -358,7 +389,7 @@ internal sealed class TimerWindow : Window
         digits.Text = $"{rounded / 60:00}:{rounded % 60:00}";
         double fraction = seconds / (preferences.Minutes * 60);
         progress.StrokeDashArray = new DoubleCollection { Perimeter * fraction / 2, Perimeter / 2 };
-        progress.Visibility = fraction > 0 ? Visibility.Visible : Visibility.Hidden;
+        progress.Visibility = !ringing && fraction > 0 ? Visibility.Visible : Visibility.Hidden;
         if (play.Tag is not bool priorRunning || priorRunning != running)
         {
             play.Content = CreateControlIcon(running ? "M8,5 L8,19 M16,5 L16,19" : "M9,5 L20,12 L9,19 Z");
@@ -385,7 +416,11 @@ internal sealed class TimerWindow : Window
             UpdateLayout();
             var scale = PresentationSource.FromVisual(this)?.CompositionTarget?.TransformToDevice ?? Matrix.Identity;
             Point origin = hovered ? toolbarFrame.TranslatePoint(new Point(), this) : new Point();
+            Rect face = new(new Point((ActualWidth - glass.ActualWidth) / 2, 7),
+                new Size(glass.ActualWidth, glass.ActualHeight));
+            if (ringing) face.Inflate(3, 2);
             Native.SetVisibleRegion(handle, scale,
+                face,
                 hovered ? new Rect(origin, new Size(toolbarFrame.ActualWidth, toolbarFrame.ActualHeight)) : null);
         }
     }
@@ -403,7 +438,7 @@ internal sealed class TimerWindow : Window
     private void ApplyWindowMode()
     {
         Topmost = locked || preferences.Pinned;
-        if (handle != IntPtr.Zero) Native.SetClickThrough(handle, locked);
+        if (handle != IntPtr.Zero) Native.SetClickThrough(handle, locked && !ringing);
     }
 
     private void BringToFront()
@@ -426,6 +461,53 @@ internal sealed class TimerWindow : Window
         SavePreferences();
     }
 
+    private void ToggleRepeat()
+    {
+        Tick();
+        preferences.Repeating = !preferences.Repeating;
+        ApplyTheme();
+        SavePreferences();
+    }
+
+    private void StartAlarm()
+    {
+        if (ringing) return;
+        ringing = true;
+        Show();
+        ApplyWindowMode();
+        SetHover(false);
+        alarmOffset.BeginAnimation(TranslateTransform.XProperty, CreateAlarmAnimation(-3, 3, -3, 3, -3, 3));
+        alarmOffset.BeginAnimation(TranslateTransform.YProperty, CreateAlarmAnimation(-2, 2, 2, -2, -2, 2));
+        UpdateDisplay();
+    }
+
+    private static DoubleAnimationUsingKeyFrames CreateAlarmAnimation(params double[] values)
+    {
+        var animation = new DoubleAnimationUsingKeyFrames
+        {
+            Duration = TimeSpan.FromSeconds(1), RepeatBehavior = RepeatBehavior.Forever
+        };
+        animation.KeyFrames.Add(new LinearDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.Zero)));
+        for (int i = 0; i < values.Length; i++)
+            animation.KeyFrames.Add(new LinearDoubleKeyFrame(values[i],
+                KeyTime.FromTimeSpan(TimeSpan.FromSeconds((i + 1) * 0.06))));
+        animation.KeyFrames.Add(new LinearDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.FromSeconds(0.45))));
+        animation.KeyFrames.Add(new LinearDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.FromSeconds(1))));
+        return animation;
+    }
+
+    private void StopAlarm()
+    {
+        if (!ringing) return;
+        ringing = false;
+        alarmOffset.BeginAnimation(TranslateTransform.XProperty, null);
+        alarmOffset.BeginAnimation(TranslateTransform.YProperty, null);
+        alarmOffset.X = alarmOffset.Y = 0;
+        ApplyWindowMode();
+        SetHover(!locked && IsMouseOver);
+        UpdateDisplay();
+    }
+
     private void ApplyTheme()
     {
         ApplyThemePreview(previewTheme ?? preferences.Theme);
@@ -445,12 +527,18 @@ internal sealed class TimerWindow : Window
         progress.Stroke = new SolidColorBrush(accent);
         track.Stroke = new SolidColorBrush(Color.FromArgb(64, ink.R, ink.G, ink.B));
         glass.Background = new SolidColorBrush(hovered ? surface : idleSurface);
+        track.Visibility = ringing ? Visibility.Hidden : Visibility.Visible;
+        if (ringing)
+        {
+            glass.Background = new SolidColorBrush(Color.FromRgb(180, 35, 50));
+            digits.Foreground = Brushes.White;
+        }
         toolbarFrame.Background = new SolidColorBrush(surface);
         toolbarFrame.BorderBrush = track.Stroke;
         ApplyThemeContextMenu(ink, accent, surface);
         foreach (Button button in toolbar.Children)
         {
-            bool selected = button == pin && preferences.Pinned;
+            bool selected = button == pin && preferences.Pinned || button == repeat && preferences.Repeating;
             Color fill = selected ? accent : ink;
             fill.A = (byte)(selected ? button.IsMouseOver ? 71 : 46 : button.IsMouseOver ? 36 : 0);
             button.Foreground = new SolidColorBrush(selected ? accent : ink);
@@ -460,6 +548,8 @@ internal sealed class TimerWindow : Window
         }
         if (pin != null) System.Windows.Automation.AutomationProperties.SetName(pin,
             preferences.Pinned ? "Unpin always on top" : "Pin always on top");
+        if (repeat != null) System.Windows.Automation.AutomationProperties.SetName(repeat,
+            preferences.Repeating ? "Disable repeat timer" : "Enable repeat timer");
     }
 
     private void AddThemeContextItem(string name)
@@ -663,6 +753,8 @@ internal sealed class TimerWindow : Window
     {
         SavePreferences();
         exiting = true;
+        alarmOffset.BeginAnimation(TranslateTransform.XProperty, null);
+        alarmOffset.BeginAnimation(TranslateTransform.YProperty, null);
         ticker.Stop();
         contrastTimer.Stop();
         hoverDelay.Stop();
@@ -715,10 +807,10 @@ internal static class Native
             throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
     }
 
-    internal static void SetVisibleRegion(IntPtr hwnd, Matrix scale, Rect? toolbar)
+    internal static void SetVisibleRegion(IntPtr hwnd, Matrix scale, Rect face, Rect? toolbar)
     {
-        IntPtr region = CreateRoundRectRgn((int)(30 * scale.M11), (int)(4 * scale.M22),
-            (int)(162 * scale.M11) + 1, (int)(62 * scale.M22) + 1,
+        IntPtr region = CreateRoundRectRgn((int)(face.Left * scale.M11), (int)(face.Top * scale.M22),
+            (int)Math.Ceiling(face.Right * scale.M11) + 1, (int)Math.Ceiling(face.Bottom * scale.M22) + 1,
             (int)(28 * scale.M11), (int)(28 * scale.M22));
         if (region == IntPtr.Zero) throw new InvalidOperationException("Could not create the timer window region.");
         try
