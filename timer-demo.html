@@ -40,9 +40,9 @@
     .timer {
       position: relative; width: 132px; height: 58px; padding: 0 16px; display: flex; align-items: center; justify-content: center;
       border: 0; border-radius: 14px;
-      color: var(--ink); background: transparent;
+      color: var(--ink); background: color-mix(in srgb, var(--solid) 24%, transparent);
       box-shadow: none;
-      transition: background .2s ease-out;
+      transition: background .2s ease-out, color .15s ease-out;
       cursor: grab; user-select: none; touch-action: none;
     }
     .stage:not(.locked):hover .timer {
@@ -52,8 +52,8 @@
     .timer.locked { cursor: default; }
     .digits { width: 100%; text-align: center; line-height: 1; font-family: "Consolas", monospace; font-size: 26px; font-weight: 500; font-variant-numeric: tabular-nums; letter-spacing: .01em; }
     .timer .perimeter { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; stroke-width: 2; }
-    .track { stroke: var(--track); }
-    .fill { stroke: var(--accent); stroke-dasharray: 100; stroke-dashoffset: 25.2; stroke-linecap: butt; }
+    .track { stroke: var(--track); transition: stroke .15s ease-out; }
+    .fill { stroke: var(--accent); stroke-dasharray: 100; stroke-dashoffset: 25.2; stroke-linecap: butt; transition: stroke .15s ease-out; }
     .stage:not(.locked):hover .timer { color: var(--ink); }
     .stage:not(.locked):hover .track { stroke: var(--track); }
     .stage:not(.locked):hover .fill { stroke: var(--accent); }
@@ -107,10 +107,21 @@
       position: absolute; bottom: 62px; right: 74px; width: 206px; margin: 0; padding: 6px;
       background: #233140; border: 1px solid #ffffff2e; border-radius: 10px;
     }
+    .menu.app-menu {
+      z-index: 2; bottom: auto; right: auto; width: 224px;
+      color: var(--ink); background: color-mix(in srgb, var(--solid) 96%, transparent);
+      border-color: color-mix(in srgb, var(--ink) 24%, transparent);
+      box-shadow: 0 8px 24px #0003; backdrop-filter: blur(14px);
+    }
     .menu[hidden] { display: none; }
     .menu button { display: block; width: 100%; border: 0; border-radius: 5px; padding: 10px 12px; background: transparent; text-align: left; font-size: 13px; }
-    .menu button:hover { background: #ffffff14; }
+    .menu button:hover { background: color-mix(in srgb, currentColor 12%, transparent); }
     .menu hr { border: 0; border-top: 1px solid #ffffff20; margin: 5px 8px; }
+    .menu-heading { margin: 5px 10px 7px; color: color-mix(in srgb, currentColor 68%, transparent); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; }
+    .menu .menu-note { margin: 2px 10px 5px; color: #b9c9d8; font-size: 11px; line-height: 1.5; }
+    .app-menu button { display: flex; align-items: center; gap: 9px; }
+    .app-menu .swatch { flex: 0 0 9px; margin: 0; }
+    .app-menu button[aria-checked="true"]::after { content: "✓"; margin-left: auto; color: var(--accent); }
     @media (max-width: 600px) {
       header { padding: 26px 24px; }
       .stage { top: 26%; }
@@ -132,7 +143,7 @@
       <p>Dark / light contrast test. Drag the timer across the split.</p>
     </header>
     <section class="stage" aria-label="Countdown widget">
-      <div class="timer" id="timer" tabindex="0" aria-label="Countdown timer. Drag to move when unlocked.">
+      <div class="timer" id="timer" tabindex="0" aria-label="Countdown timer. Drag to move when unlocked." aria-haspopup="menu" aria-expanded="false" aria-controls="app-menu">
         <span class="digits" id="digits">18:42</span>
         <svg class="perimeter" viewBox="0 0 132 58" id="progress" role="progressbar" aria-label="Time remaining" aria-valuemin="0" aria-valuemax="1500" aria-valuenow="1122">
           <path class="track" d="M66 1H118A13 13 0 0 1 131 14V44A13 13 0 0 1 118 57H14A13 13 0 0 1 1 44V14A13 13 0 0 1 14 1Z"/>
@@ -180,23 +191,34 @@
         </div>
         <p class="theme-description" id="theme-description" role="status">Slate — cool graphite glass with an ice-blue border. Current theme.</p>
         <p id="error" role="alert"></p>
-        <p>No hover: transparent, with contrast adapted to the dark or light half. Hover: theme color at 80% opacity. This demo knows its background; desktop adaptation needs separate native support.</p>
+        <p>No hover: transparent, with contrast adapted to the dark or light half. Hover: theme color at 80% opacity. Right-click the timer to change themes. This demo simulates screen-capture exclusion.</p>
       </div>
       <div class="state" role="status"><strong id="mode">Unlocked</strong><span id="status">Counting down</span></div>
     </section>
     <footer class="taskbar" aria-label="Simulated system tray">
-      <span class="tray-note">Right-click the timer icon to unlock</span>
+      <span class="tray-note">Tray menu: adaptive color, lock, timer actions</span>
       <button id="tray" title="Timer tray menu (demo)" aria-label="Open timer tray menu" aria-haspopup="true" aria-expanded="false" aria-controls="tray-menu">
         <svg viewBox="0 0 24 24"><circle cx="12" cy="13" r="8"/><path d="M10 2h4M12 5V2M12 9v4l3 2"/></svg>
       </button>
       <span class="clock">UI demo</span>
     </footer>
     <div class="menu" id="tray-menu" hidden aria-label="Tray actions">
+      <button id="menu-adaptive" aria-pressed="true">Adaptive color: On</button>
+      <p class="menu-note" id="capture-state">Screen capture exclusion is on.</p>
+      <hr>
       <button id="menu-lock">Lock widget</button>
       <button id="menu-pause">Pause timer</button>
       <button id="menu-reset">Reset timer</button>
       <hr>
       <button id="menu-hide">Hide widget</button>
+    </div>
+    <div class="menu app-menu" id="app-menu" hidden role="menu" aria-label="Timer color theme">
+      <p class="menu-heading">Color theme</p>
+      <button type="button" role="menuitemradio" data-theme="slate" aria-checked="true"><span class="swatch" style="--swatch:#b6dcff"></span>Slate</button>
+      <button type="button" role="menuitemradio" data-theme="mint" aria-checked="false"><span class="swatch" style="--swatch:#a5e7cb"></span>Mint</button>
+      <button type="button" role="menuitemradio" data-theme="amber" aria-checked="false"><span class="swatch" style="--swatch:#f3ce8a"></span>Amber</button>
+      <button type="button" role="menuitemradio" data-theme="lavender" aria-checked="false"><span class="swatch" style="--swatch:#d1bfff"></span>Lavender</button>
+      <button type="button" role="menuitemradio" data-theme="rose" aria-checked="false"><span class="swatch" style="--swatch:#eab2be"></span>Rose</button>
     </div>
   </main>
   <script>
@@ -208,6 +230,8 @@
     let locked = false;
     let pinned = false;
     let visible = true;
+    let adaptiveColor = true;
+    let fixedVariant = "dark";
     let deadline = performance.now() + remaining * 1000;
     let drag = null;
 
@@ -219,21 +243,35 @@
       rose: { dark: ["#FFF0F2", "#EAB2BE", "#402A33"], light: ["#4B2933", "#8D465B", "#F7E7EC"] }
     };
     let selectedTheme = "slate";
+    let hoveredTheme = null;
+    let focusedTheme = null;
     function updateTheme() {
       const bounds = $("timer").getBoundingClientRect();
-      const light = bounds.left + bounds.width / 2 >= innerWidth / 2;
-      const [ink, accent, solid] = themes[selectedTheme][light ? "light" : "dark"];
-      for (const [key, value] of Object.entries({ ink, accent, solid, track: ink + "40" }))
+      const light = adaptiveColor
+        ? bounds.left + bounds.width / 2 >= innerWidth / 2
+        : fixedVariant === "light";
+      const variant = light ? "light" : "dark";
+      const activeTheme = hoveredTheme ?? focusedTheme ?? selectedTheme;
+      const [ink, accent, solid] = themes[activeTheme][variant];
+      for (const [key, value] of Object.entries({ ink, accent, solid, track: ink + "40" })) {
         stage.style.setProperty(`--${key}`, value);
-      const name = selectedTheme[0].toUpperCase() + selectedTheme.slice(1);
-      $("theme-description").textContent = `${name} / ${light ? "light" : "dark"} background variant. Drag across the split to compare.`;
+        $("app-menu").style.setProperty(`--${key}`, value);
+      }
+      const name = activeTheme[0].toUpperCase() + activeTheme.slice(1);
+      $("theme-description").textContent = adaptiveColor
+        ? `${name}${activeTheme !== selectedTheme ? " preview" : ""} / ${variant} background variant. Drag across the split to compare.`
+        : `${name}${activeTheme !== selectedTheme ? " preview" : ""} / fixed ${variant} variant. Adaptive color is off.`;
     }
     document.querySelectorAll("[data-theme]").forEach(button => {
       button.addEventListener("click", () => {
         selectedTheme = button.dataset.theme;
-        document.querySelectorAll("[data-theme]").forEach(choice =>
-          choice.setAttribute("aria-pressed", String(choice === button)));
+        document.querySelectorAll("[data-theme]").forEach(choice => {
+          const selected = choice.dataset.theme === selectedTheme;
+          if (choice.hasAttribute("aria-pressed")) choice.setAttribute("aria-pressed", String(selected));
+          if (choice.hasAttribute("aria-checked")) choice.setAttribute("aria-checked", String(selected));
+        });
         updateTheme();
+        if (button.closest("#app-menu")) closeAppMenu(true);
       });
     });
 
@@ -268,6 +306,11 @@
       $("menu-lock").textContent = locked ? "Unlock widget" : "Lock widget";
       $("menu-pause").textContent = running ? "Pause timer" : "Resume timer";
       $("menu-hide").textContent = visible ? "Hide widget" : "Show widget";
+      $("menu-adaptive").textContent = `Adaptive color: ${adaptiveColor ? "On" : "Off"}`;
+      $("menu-adaptive").setAttribute("aria-pressed", String(adaptiveColor));
+      $("capture-state").textContent = adaptiveColor
+        ? "Screen capture exclusion is on."
+        : "Screen capture exclusion is off; the timer can be captured.";
       stage.hidden = !visible;
     }
     function updateTime() {
@@ -289,6 +332,15 @@
       render();
     }
     function setLocked(value) { locked = value; render(); }
+    function setAdaptiveColor(value) {
+      if (adaptiveColor === value) return;
+      if (!value) {
+        const bounds = $("timer").getBoundingClientRect();
+        fixedVariant = bounds.left + bounds.width / 2 >= innerWidth / 2 ? "light" : "dark";
+      }
+      adaptiveColor = value;
+      render();
+    }
     function closeMenu(restoreFocus = false) {
       $("tray-menu").hidden = true;
       $("tray").setAttribute("aria-expanded", "false");
@@ -296,9 +348,33 @@
     }
     function openMenu(event) {
       event.preventDefault();
+      closeAppMenu();
       $("tray-menu").hidden = false;
       $("tray").setAttribute("aria-expanded", "true");
       $("menu-lock").focus();
+    }
+    function closeAppMenu(restoreFocus = false) {
+      const hadPreview = hoveredTheme !== null || focusedTheme !== null;
+      hoveredTheme = null;
+      focusedTheme = null;
+      $("app-menu").hidden = true;
+      $("timer").setAttribute("aria-expanded", "false");
+      if (hadPreview) updateTheme();
+      if (restoreFocus) $("timer").focus();
+    }
+    function openAppMenu(event) {
+      if (locked) return;
+      event.preventDefault();
+      closeMenu();
+      const desktopBounds = document.querySelector(".desktop").getBoundingClientRect();
+      const menu = $("app-menu");
+      menu.hidden = false;
+      const left = Math.max(8, Math.min(event.clientX - desktopBounds.left, desktopBounds.width - menu.offsetWidth - 8));
+      const top = Math.max(8, Math.min(event.clientY - desktopBounds.top, desktopBounds.height - menu.offsetHeight - 8));
+      menu.style.left = `${left}px`;
+      menu.style.top = `${top}px`;
+      $("timer").setAttribute("aria-expanded", "true");
+      menu.querySelector('[aria-checked="true"]').focus();
     }
     $("pause").onclick = togglePause;
     $("reset").onclick = reset;
@@ -306,15 +382,42 @@
     $("lock").onclick = () => { setLocked(true); $("tray").focus(); };
     $("tray").onclick = event => $("tray-menu").hidden ? openMenu(event) : closeMenu();
     $("tray").oncontextmenu = openMenu;
+    stage.addEventListener("contextmenu", openAppMenu);
+    $("app-menu").addEventListener("pointerover", event => {
+      const item = event.target.closest('[role="menuitemradio"][data-theme]');
+      if (!item) return;
+      hoveredTheme = item.dataset.theme;
+      updateTheme();
+    });
+    $("app-menu").addEventListener("pointerleave", () => {
+      hoveredTheme = null;
+      updateTheme();
+    });
+    $("app-menu").addEventListener("focusin", event => {
+      const item = event.target.closest('[role="menuitemradio"][data-theme]');
+      if (!item) return;
+      focusedTheme = item.dataset.theme;
+      updateTheme();
+    });
+    $("app-menu").addEventListener("focusout", event => {
+      if (event.relatedTarget?.closest("#app-menu")) return;
+      focusedTheme = null;
+      updateTheme();
+    });
+    $("menu-adaptive").onclick = () => setAdaptiveColor(!adaptiveColor);
     $("menu-lock").onclick = () => { setLocked(!locked); closeMenu(true); };
     $("menu-pause").onclick = () => { togglePause(); closeMenu(true); };
     $("menu-reset").onclick = () => { reset(); closeMenu(true); };
     $("menu-hide").onclick = () => { visible = !visible; render(); closeMenu(true); };
     document.addEventListener("pointerdown", event => {
       if (!event.target.closest(".menu, #tray")) closeMenu();
+      if (!event.target.closest("#app-menu, .stage")) closeAppMenu();
     });
     document.addEventListener("keydown", event => {
-      if (event.key === "Escape") closeMenu(true);
+      if (event.key === "Escape") {
+        if (!$("tray-menu").hidden) closeMenu(true);
+        else closeAppMenu(true);
+      }
     });
     $("duration-form").onsubmit = event => {
       event.preventDefault();
